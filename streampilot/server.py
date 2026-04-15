@@ -719,6 +719,25 @@ def _init_db():
             ended_at    TEXT NOT NULL,
             created_at  TEXT
         )""")
+   
+    # ------------------------------------------------------------------
+    # Authentication tables (schema only)
+    # ------------------------------------------------------------------
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS auth_credentials (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            username TEXT NOT NULL,
+            password_hash TEXT NOT NULL
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS auth_state (
+            id INTEGER PRIMARY KEY CHECK(id = 1),
+            initialized INTEGER NOT NULL
+        )
+    """)
+ 
     conn.commit()
     conn.close()
 
@@ -871,11 +890,39 @@ def _license_badge_html():
 def _license_expired_html():
     return b''
 
+import bcrypt
+
+def _bcrypt_hash(password: str) -> str:
+    return bcrypt.hashpw(
+        password.encode("utf-8"),
+        bcrypt.gensalt()
+    ).decode("utf-8")
+
+def _bcrypt_verify(password: str, password_hash: str) -> bool:
+    return bcrypt.checkpw(
+        password.encode("utf-8"),
+        password_hash.encode("utf-8")
+    )
+
 def _get_credentials():
-    """Return (username, password) from env, with defaults."""
-    u = (os.getenv('SP_USER') or 'admin').strip()
-    p = (os.getenv('SP_PASSWORD') or 'admin').strip()
-    return u, p
+    # 1) DB takes precedence
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute(
+            "SELECT username, password_hash FROM auth_credentials WHERE id = 1"
+        ).fetchone()
+        if row:
+            return row[0], row[1]
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+    # 2) Fallback (only on very first boot)
+    return (
+        (os.getenv("SP_USER") or "admin").strip(),
+        _bcrypt_hash(os.getenv("SP_PASSWORD") or "admin")
+    )
 
 def current_user():
     try:
@@ -1448,12 +1495,17 @@ class App:
 
     @cherrypy.expose
     def login_post(self, username='', password=''):
-        expected_user, expected_pass = _get_credentials()
-        if username.strip() == expected_user and password == expected_pass:
+        stored_user, stored_hash = _get_credentials()
+
+        # Username must match AND password must verify bcrypt hash
+        if (
+            username.strip() == stored_user
+            and _bcrypt_verify(password, stored_hash)
+        ):
             cherrypy.session['username'] = username.strip()
             raise cherrypy.HTTPRedirect('/')
-        raise cherrypy.HTTPRedirect('/login?msg=error')
 
+        raise cherrypy.HTTPRedirect('/login?msg=error')
 
     # ── SRT Gateway endpoints ─────────────────────────────────────────────────
 
@@ -5433,19 +5485,92 @@ async function repoll(){
             c.execute("UPDATE srt_gw_slack SET notify_paused=0 WHERE gw_id=?", (gid,))
         raise cherrypy.HTTPRedirect("/settings?msg=SRT+Gateway+notifications+resumed")
 
+def _parse_cli():
+    # Parse CLI args and push them into env vars before anything reads them
+    import argparse
+    
+    parser = argparse.ArgumentParser(
+        add_help=False,
+        allow_abbrev=False
+    )
+
+    parser.add_argument('--port')
+    parser.add_argument('--name')
+    parser.add_argument('--user')
+    parser.add_argument('--password')
+    parser.add_argument('--max_streamhubs')
+    parser.add_argument('--max_srtgateway')
+    args = parser.parse_args()
+    return args
+
+
+def _auth_already_initialized() -> bool:
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        row = conn.execute(
+            "SELECT initialized FROM auth_state WHERE id = 1"
+        ).fetchone()
+        return row is not None and row[0] == 1
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+def _apply_cli_env(args):
+    # Runtime flags (always allowed)
+    if args.port:
+        os.environ['SP_PORT'] = args.port
+    if args.name:
+        os.environ['CLIENT_NAME'] = args.name
+    if args.max_streamhubs:
+        os.environ['MAX_STREAMHUB'] = args.max_streamhubs
+    if args.max_srtgateway:
+        os.environ['MAX_SRTGATEWAY'] = args.max_srtgateway
+
+
+    # TEMP auth env only (used for first init)
+    if not _auth_already_initialized():
+        if args.user:
+            os.environ['SP_USER'] = args.user
+        if args.password:
+            os.environ['SP_PASSWORD'] = args.password
 
 def run():
+    args = _parse_cli()
+    _apply_cli_env(args)
+    
     _init_db()  # create tables/indexes once at startup
+
+    if not _auth_already_initialized():
+        user = (os.getenv("SP_USER") or "admin").strip()
+        pw   = (os.getenv("SP_PASSWORD") or "admin").strip()
+
+        pw_hash = _bcrypt_hash(pw)
+
+        conn = sqlite3.connect(DB_PATH)
+        conn.execute("""
+            INSERT INTO auth_credentials (id, username, password_hash)
+            VALUES (1, ?, ?)
+        """, (user, pw_hash))
+        conn.execute("""
+            INSERT INTO auth_state (id, initialized)
+            VALUES (1, 1)
+        """)
+        conn.commit()
+        conn.close()
+
     # Attach CORS headers to every response (including 3xx redirects)
     def _cors():
         cherrypy.response.headers['Access-Control-Allow-Origin'] = '*'
     cherrypy.tools.cors = cherrypy.Tool('before_finalize', _cors, priority=60)
 
-    port = int(os.getenv("StreamPilot", "5555"))
+    port = int(os.getenv("SP_PORT", "5555"))
     mode = (os.getenv("SP_MODE") or "http").strip().lower()
+    
     proxy_mode = (mode == "proxy")
-    # Warn if default credentials are used
+
     _u, _p = _get_credentials()
+    # Warn if default credentials are used
     if _u == 'admin' and _p == 'admin':
         cherrypy.log('[auth] WARNING: using default credentials admin/admin — set -user and -password')
     if proxy_mode:
@@ -5478,6 +5603,7 @@ def run():
         cfg["tools.proxy.scheme"] = "X-Forwarded-Proto"
         cfg["tools.sessions.secure"] = True
     cherrypy.config.update(cfg)
+    
 
     # Start background poller so sessions start/stop even when Dashboard is not open
     global POLLER, SRT_POLLER
