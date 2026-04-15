@@ -5503,7 +5503,6 @@ def _parse_cli():
     args = parser.parse_args()
     return args
 
-
 def _auth_already_initialized() -> bool:
     try:
         conn = sqlite3.connect(DB_PATH)
@@ -5526,7 +5525,6 @@ def _apply_cli_env(args):
         os.environ['MAX_STREAMHUB'] = args.max_streamhubs
     if args.max_srtgateway:
         os.environ['MAX_SRTGATEWAY'] = args.max_srtgateway
-
 
     # TEMP auth env only (used for first init)
     if not _auth_already_initialized():
@@ -5604,7 +5602,6 @@ def run():
         cfg["tools.sessions.secure"] = True
     cherrypy.config.update(cfg)
     
-
     # Start background poller so sessions start/stop even when Dashboard is not open
     global POLLER, SRT_POLLER
     POLLER = BackgroundPoller(DB_PATH, interval=2)
