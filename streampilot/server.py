@@ -5638,12 +5638,12 @@ def _parse_cli():
         allow_abbrev=False
     )
     
-    parser.add_argument('-port,','--port')
-    parser.add_argument('-name','--name')
-    parser.add_argument('-user','--user')
-    parser.add_argument('-password','--password')
-    parser.add_argument('-max_streamhub','--max_streamhub')
-    parser.add_argument('-max_srtgateway','--max_srtgateway')
+    parser.add_argument('-port')
+    parser.add_argument('-name')
+    parser.add_argument('-user')
+    parser.add_argument('-password')
+    parser.add_argument('-max_streamhub')
+    parser.add_argument('-max_srtgateway')
     args = parser.parse_args()
     return args
 
