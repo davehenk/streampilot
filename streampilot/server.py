@@ -810,10 +810,15 @@ def _persist_logs(host: str, entries: list):
             except Exception:
                 pass
 
+def _is_viewer():
+    return getattr(cherrypy, 'session', {}).get('role') == 'viewer'
+
+
 def render(tpl, **ctx):
     client, status = _get_client_status()
     ctx.setdefault('client', client)
     ctx.setdefault('status', status)
+    ctx['is_viewer'] = _is_viewer()
     # Provide MAX_STREAMHUB (default 1) and a device_count to all templates
     limit_env = os.getenv('MAX_STREAMHUB')
     try:
@@ -1449,10 +1454,18 @@ class App:
     @cherrypy.expose
     def login_post(self, username='', password=''):
         expected_user, expected_pass = _get_credentials()
-        if username.strip() == expected_user and password == expected_pass:
-            cherrypy.session['username'] = username.strip()
-            raise cherrypy.HTTPRedirect('/')
-        raise cherrypy.HTTPRedirect('/login?msg=error')
+        username = username.strip()
+        viewer_user = (os.getenv('SP_VIEWER_USER') or '').strip()
+        viewer_pass = os.getenv('SP_VIEWER_PASSWORD') or ''
+        if username == expected_user and password == expected_pass:
+            role = 'admin'
+        elif viewer_user and viewer_pass and username == viewer_user and password == viewer_pass:
+            role = 'viewer'
+        else:
+            raise cherrypy.HTTPRedirect('/login?msg=error')
+        cherrypy.session['username'] = username
+        cherrypy.session['role'] = role
+        raise cherrypy.HTTPRedirect('/')
 
 
     # ── SRT Gateway endpoints ─────────────────────────────────────────────────
@@ -2914,6 +2927,7 @@ class App:
     def logs_ui(self, msg=None):
         # Simple HTML page to list sessions and offer downloads/purge
         import sqlite3, html
+        is_viewer = _is_viewer()
         with connect_db() as c:
             # Ensure 'title' column exists (migration-safe)
             cols = {r[1] for r in c.execute("PRAGMA table_info(live_session)").fetchall()}
@@ -2991,7 +3005,7 @@ class App:
 
             # Safe HTML for Stop button (only if session is still open)
             stop_btn = ''
-            if not end:
+            if not end and not is_viewer:
                 stop_btn = (
                     '<form class="d-inline ms-1" method="post" action="/log_stop" '
                     'onsubmit="return confirm(\'Stop this session now?\');">'
@@ -2999,6 +3013,20 @@ class App:
                     '<button class="btn btn-sm btn-warning" type="submit">Stop</button>'
                     '</form>'
                 )
+
+            admin_buttons = ''
+            delete_btn = ''
+            if not is_viewer:
+                admin_buttons = f"""
+                <a class="btn btn-sm btn-outline-primary" href="/log_download?session_id={sid}" download="session_{sid}.json">JSON</a>
+                <a class="btn btn-sm btn-outline-secondary ms-1" href="/log_download_csv?session_id={sid}">CSV</a>
+                <a class="btn btn-sm btn-outline-success ms-1" href="/log_download_geojson?session_id={sid}">GeoJSON</a>
+                """
+                delete_btn = f"""
+                <form class="d-inline ms-1" method="post" action="/log_delete" onsubmit="return confirm('Delete this session?');">
+                  <input type="hidden" name="session_id" value="{sid}">
+                  <button class="btn btn-sm btn-danger" type="submit">Delete</button>
+                </form>"""
 
             items.append(f"""
             <tr>
@@ -3019,18 +3047,19 @@ class App:
               </td>
               <td><div>{esc(_fmt_ts(end))}{' <span class="text-muted small">UTC</span>' if end else ''}</div><div class="text-muted small local-ts" data-utc="{esc(end) if end else ''}"></div></td>
               <td>
-                <a class="btn btn-sm btn-outline-primary" href="/log_download?session_id={sid}" download="session_{sid}.json">JSON</a>
-                <a class="btn btn-sm btn-outline-secondary ms-1" href="/log_download_csv?session_id={sid}">CSV</a>
-                <a class="btn btn-sm btn-outline-success ms-1" href="/log_download_geojson?session_id={sid}">GeoJSON</a>
+                {admin_buttons}
                 {'<a class="btn btn-sm btn-outline-danger ms-1" href="/log_pdf?session_id='+str(sid)+'">PDF</a>' if end else ''}
                 <a class="btn btn-sm btn-outline-dark ms-1" href="/log_view?session_id={sid}">View</a>
                 {stop_btn}
-                <form class="d-inline ms-1" method="post" action="/log_delete" onsubmit="return confirm('Delete this session?');">
-                  <input type="hidden" name="session_id" value="{sid}">
-                  <button class="btn btn-sm btn-danger" type="submit">Delete</button>
-                </form>
+                {delete_btn}
               </td>
             </tr>""")
+
+        manage_sessions = '' if is_viewer else """
+              <a class="btn btn-outline-primary me-2" href="/log_import">Import session</a>
+              <form class="d-inline" method="post" action="/log_purge" onsubmit="return confirm('Purge all logs? This cannot be undone.');">
+                <button class="btn btn-danger">Purge all</button>
+              </form>"""
 
         body = f"""
         <!doctype html>
@@ -3050,10 +3079,7 @@ class App:
             <h1 class="h4 m-0">Live sessions</h1>
             <div>
               <a class="btn btn-outline-secondary me-2" href="/">← Back to dashboard</a>
-              <a class="btn btn-outline-primary me-2" href="/log_import">Import session</a>
-              <form class="d-inline" method="post" action="/log_purge" onsubmit="return confirm('Purge all logs? This cannot be undone.');">
-                <button class="btn btn-danger">Purge all</button>
-              </form>
+              {manage_sessions}
             </div>
           </div>
           {('<div class="alert alert-info">'+esc(msg)+'</div>' if msg else '')}

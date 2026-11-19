@@ -9,12 +9,18 @@ Copyright (C) 2026 Alexandre Licinio
   <div>
     <a class="btn btn-outline-secondary me-2" href="/gateway_logs">Logs</a>
     <a class="btn btn-outline-secondary me-2" href="/gateway_geoip">GeoIP</a>
+    % if not is_viewer:
     <a class="btn btn-outline-secondary" href="/devices">Manage devices</a>
+    % endif
   </div>
 </div>
 
 % if not srt_gateways:
+% if is_viewer:
+<div class="alert alert-warning">No SRT Gateway configured.</div>
+% else:
 <div class="alert alert-warning">No SRT Gateway configured. <a href="/devices">Add one</a>.</div>
+% endif
 % else:
 
 <ul class="nav nav-tabs mb-3" role="tablist" id="gwTabs">

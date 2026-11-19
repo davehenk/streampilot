@@ -8,16 +8,16 @@ Copyright (C) 2026 Alexandre Licinio
     <h1 class="h3 m-0">StreamHub</h1>
     <div>
     <a class="btn btn-outline-secondary me-2" href="/logs_ui">Logs</a>
-    % if not devices:
+    % if not is_viewer and not devices:
     <a class="btn btn-primary" href="/devices">Add device</a>
-    % else:
+    % elif not is_viewer:
     <a class="btn btn-outline-secondary ms-1" href="/devices" title="Manage devices">Manage devices</a>
     % endif
     </div>
     </div>
     
     % if not devices:
-    <div class="alert alert-warning">No devices yet. Click "Add StreamHub".</div>
+    <div class="alert alert-warning">No devices yet.${'' if is_viewer else ' Click "Add StreamHub".'}</div>
     % else:
     <div class="mt-2" id="hubTabsWrap">
       <ul class="nav nav-tabs" role="tablist">
