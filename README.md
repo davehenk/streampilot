@@ -109,6 +109,14 @@ You can also specify port, name, max_streamhubs thru the following environment v
 > - `-max_srtgateway`: Maximum number of SRT Gateway devices (default: unlimited)
 > - `-srt_retention_days`: Sample retention in days for SRT Gateway (default: 30)
 
+To enable one viewer login, set both `SP_VIEWER_USER` and `SP_VIEWER_PASSWORD`
+in the server environment. Admin credentials remain configured as before. If
+both logins have the same username and password, the admin login takes precedence.
+The viewer session list hides JSON, CSV, GeoJSON, Stop, Delete, Import session,
+and Purge all. The dashboards also hide device-management links and the Devices
+and Settings tabs. This is a UI convenience, not server-side authorization or
+access control.
+
 The app will be available at [http://localhost:5555](http://localhost:5555).
 
 ---
