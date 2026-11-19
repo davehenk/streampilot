@@ -3473,15 +3473,15 @@ class App:
                     <div class="legend-box small d-inline-block text-start">
                       <div class="form-check form-check-sm mb-1">
                         <input class="form-check-input" type="checkbox" id="chkGood" checked>
-                        <label class="form-check-label"><span style="background:#ff00ff"></span> Good</label>
+                        <label class="form-check-label"><span style="background:#008000"></span> Good</label>
                       </div>
                       <div class="form-check form-check-sm mb-1">
                         <input class="form-check-input" type="checkbox" id="chkFair" checked>
-                        <label class="form-check-label"><span style="background:#ff7f00"></span> Fair</label>
+                        <label class="form-check-label"><span style="background:#ffff00"></span> Fair</label>
                       </div>
                       <div class="form-check form-check-sm mb-1">
                         <input class="form-check-input" type="checkbox" id="chkPoor" checked>
-                        <label class="form-check-label"><span style="background:#ffff00"></span> Poor</label>
+                        <label class="form-check-label"><span style="background:#ff0000"></span> Poor</label>
                       </div>
                     </div>
                   </div>
@@ -3752,12 +3752,12 @@ class App:
                 }
                 return 'poor';
               }
-              const colorFor = function(q) { return q==='good' ? '#ff00ff' : (q==='fair' ? '#ff7f00' : '#ffff00'); };
+              const colorFor = function(q) { return q==='good' ? '#008000' : (q==='fair' ? '#ffff00' : '#ff0000'); };
 
               // Buckets of polylines per category for toggle visibility
-              const layersGood = [];   // fuchsia
-              const layersFair = [];   // vivid orange
-              const layersPoor = [];   // fluorescent yellow
+              const layersGood = [];   // green
+              const layersFair = [];   // yellow
+              const layersPoor = [];   // red
               const layersDrop = [];   // red dashed
 
               function applyLegendFilters() {
