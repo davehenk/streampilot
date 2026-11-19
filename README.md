@@ -119,6 +119,9 @@ access control.
 
 The app will be available at [http://localhost:5555](http://localhost:5555).
 
+Use the **Dark mode** switch on any app page to change the theme. StreamPilot
+remembers your choice across pages and visits in the same browser.
+
 ---
 
 ## Usage with Haivision StreamHub
